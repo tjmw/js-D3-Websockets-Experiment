@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>D3/Websockets Experiment</title>
+    <style type="text/css">
+      .chart rect {
+        fill: steelblue;
+        stroke: white;
+      }
+    </style>
+    <script src="vendor_js/jquery-1.8.3.min.js"></script>
+    <script src="vendor_js/d3.v3.min.js"></script>
+    <script>
+      $(document).ready(function () {
+        var wsServer = 'ws://localhost:1337/';
+        var Socket = "MozWebSocket" in window ? MozWebSocket : WebSocket;
+        var ws = new Socket(wsServer);
+        var maxItems = 33;
+
+        var myD3 = (function() {
+          var w = 20,
+              h = 100;
+
+          var chart = d3.select("#chart-container").append("svg")
+            .attr("class", "chart")
+            .attr("width", w * maxItems - 1)
+            .attr("height", h);
+
+          chart.append("line")
+            .attr("x1", 0)
+            .attr("x2", w * maxItems)
+            .attr("y1", h - .5)
+            .attr("y2", h - .5)
+            .style("stroke", "#000");
+
+          return {
+            x: d3.scale.linear()
+              .domain([0, 1])
+              .range([0, w]),
+
+            y: d3.scale.linear()
+              .domain([0, 100])
+              .rangeRound([0, h]),
+
+            chart: chart,
+
+            update: function(data) {
+              var rect = this.chart.selectAll("rect")
+                .data(data, function(d) { return d.id; });
+
+              rect.enter().insert("rect", "line")
+                .attr("x", function(d, i) { return this.x(i + (maxItems - data.length) + 1) - .5; }.bind(this))
+                .attr("y", function(d) { return h - this.y(d.value) - .5; }.bind(this))
+                .attr("width", w)
+                .attr("height", function(d) { return this.y(d.value); }.bind(this))
+              .transition()
+                .duration(1000)
+                .attr("x", function(d, i) { return this.x(i + (maxItems - data.length)) - .5; }.bind(this))
+
+              rect.transition()
+                .duration(1000)
+                .attr("x", function(d, i) { return this.x(i + (maxItems - data.length)) - .5; }.bind(this))
+
+              rect.exit().transition()
+                .duration(1000)
+                .attr("x", function(d, i) { return this.x(i - 1) - .5; }.bind(this))
+                .attr("x", function(d, i) { return this.x(i + (maxItems - data.length) - 1) - .5; }.bind(this))
+                .remove();
+            },
+          };
+        })();
+
+        ws.onmessage = function(evt) {
+          var data = $.parseJSON(evt.data);
+          myD3.update(data);
+        };
+
+        ws.onclose = function() {
+          console.log("Socket connection closed");
+        };
+
+        ws.onopen = function() {
+          console.log('Connected');
+        };
+
+        function generateData() {
+          var value = Math.floor(Math.random() * (100 - 1 + 1)) + 1;
+          return {
+            id: (new Date() / 1000) + "-" + value + "-" + (Math.floor(Math.random() * (1000 - 1 + 1)) + 1),
+            value: value,
+          };
+        }
+
+        $('button').click(function (e) {
+          ws.send(JSON.stringify(generateData()));
+        });
+      });
+    </script>
+  </head>
+  <body>
+    <div id="chart-container"></div>
+    <button>Send data</button>
+  </body>
+</html>
